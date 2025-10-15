@@ -1,0 +1,16 @@
+{
+  services:
+  - type: web
+    name: whop-voice-chat
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: APP_HOST
+        value: 0.0.0.0
+      - key: REQUIRE_AUTH
+        value: false
+      - key: CORS_ALLOW_ORIGINS
+        value: https://whop.com,https://*.whop.com
+}
