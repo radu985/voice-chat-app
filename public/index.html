@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WHOP Voice Chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="%230b1220"/><path d="M18 28a14 14 0 1 1 28 0v8a6 6 0 0 0 6 6h-8v4H20v-4h-8a6 6 0 0 0 6-6z" fill="%2322d3ee"/></svg>' />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <h1>Channels</h1>
+        <div class="join-form">
+          <input id="room" placeholder="room-id" />
+          <input id="name" placeholder="your name" />
+          <button id="joinBtn">Join</button>
+        </div>
+        <ul id="peers" class="peers"></ul>
+      </aside>
+
+      <main class="main">
+        <section class="controls">
+          <button id="muteBtn" disabled>Mute</button>
+          <button id="enableMicBtn" disabled>Enable Mic</button>
+          <button id="leaveBtn" disabled>Leave</button>
+        </section>
+        <section class="videos" id="videos"></section>
+        <section class="chat">
+          <div id="messages" class="messages"></div>
+          <div class="composer">
+            <input id="msgInput" placeholder="Type a message" />
+            <button id="sendBtn">Send</button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="alertModal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-title">Device access needed</div>
+        <div id="alertBody" class="modal-body"></div>
+        <div class="modal-actions">
+          <button id="alertClose">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toasts" class="toasts"></div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
