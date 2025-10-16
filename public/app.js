@@ -44,6 +44,13 @@ function appendMessage(text, me = false) {
   messages.scrollTop = messages.scrollHeight;
 }
 
+function updateAuthState(){
+  const token = localStorage.getItem('whop_token');
+  const a = document.getElementById('authState');
+  if (!a) return;
+  a.textContent = token ? 'Signed in with Whop' : 'Not signed in';
+}
+
 function ensureTileElements(clientId, name, isLocal=false) {
   let wrap = document.getElementById(`tile-${clientId}`);
   if (!wrap) {
@@ -265,6 +272,10 @@ function connect(roomId, name) { state.ws = new WebSocket(`${location.protocol =
 
 function setupUI() {
   const modal = alertModal(); if (modal) document.getElementById('alertClose').onclick = hideAlert;
+  const loginBtn = document.getElementById('loginBtn');
+  if (loginBtn) loginBtn.onclick = () => { window.location.href = '/auth/login'; };
+  updateAuthState();
+
   el('joinBtn').onclick = async () => { const room = el('room').value.trim(); const name = el('name').value.trim() || 'Guest'; if (!room) return; state.roomId = room; state.name = name; try { if (!state.localStream) { state.localStream = await getMediaWithFallback(); addPeerTile('local', name || 'Me', state.localStream, true); setupLocalVAD(state.localStream); setupLocalPitch(state.localStream); } } catch (e) { showAlert('Microphone/camera access is blocked. You can still join to listen. Click <b>Enable Mic</b> later to grant access.'); } connect(room, name); };
   el('enableMicBtn').onclick = async () => { try { state.localStream = await getMediaWithFallback(); addPeerTile('local', state.name || 'Me', state.localStream, true); setupLocalVAD(state.localStream); setupLocalPitch(state.localStream); replaceOrAddTrackOnPeers(); send({ type: 'media-state', hasAudio: hasAudioTrack(state.localStream), hasVideo: hasVideoTrack(state.localStream) }); el('enableMicBtn').disabled = true; hideAlert(); } catch (e) { showAlert('Still no access to mic/camera. Check Windows privacy settings and browser site permissions.'); } };
   const sendCurrentMessage = () => { const val = el('msgInput').value.trim(); if (!val) return; send({ type: 'chat', message: val }); el('msgInput').value = ''; };

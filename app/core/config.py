@@ -15,5 +15,12 @@ class Settings(BaseModel):
         else ["*"]
     )
 
+    whop_client_id: str | None = os.getenv("WHOP_CLIENT_ID")
+    whop_client_secret: str | None = os.getenv("WHOP_CLIENT_SECRET")
+    whop_auth_url: str | None = os.getenv("WHOP_AUTH_URL")
+    whop_token_url: str | None = os.getenv("WHOP_TOKEN_URL")
+    whop_userinfo_url: str | None = os.getenv("WHOP_USERINFO_URL")
+    oauth_redirect_url: str | None = os.getenv("OAUTH_REDIRECT_URL")
+
 
 settings = Settings()

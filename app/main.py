@@ -1,10 +1,13 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, RedirectResponse, HTMLResponse
 from typing import Optional
 import os
 import orjson
+import secrets
+import httpx
+from urllib.parse import urlencode
 
 from app.core.config import settings
 from app.services.rooms import RoomService
@@ -19,6 +22,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def csp_headers(request: Request, call_next):
+    resp: Response = await call_next(request)
+    resp.headers["Content-Security-Policy"] = "frame-ancestors https://whop.com https://*.whop.com;"
+    return resp
 
 public_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "public")
 app.mount("/static", StaticFiles(directory=public_dir), name="static")
@@ -40,6 +49,62 @@ async def favicon():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/auth/login")
+async def auth_login():
+    if not all([settings.whop_auth_url, settings.whop_client_id, settings.oauth_redirect_url]):
+        return HTMLResponse("OAuth not configured", status_code=500)
+    state = secrets.token_urlsafe(24)
+    params = {
+        "client_id": settings.whop_client_id,
+        "response_type": "code",
+        "redirect_uri": settings.oauth_redirect_url,
+        "scope": "openid profile email",
+        "state": state,
+    }
+    url = f"{settings.whop_auth_url}?{urlencode(params)}"
+    return RedirectResponse(url)
+
+
+@app.get("/auth/callback")
+async def auth_callback(code: Optional[str] = None, state: Optional[str] = None):
+    if not code:
+        return HTMLResponse("Missing code", status_code=400)
+    if not all([settings.whop_token_url, settings.whop_client_id, settings.whop_client_secret, settings.oauth_redirect_url]):
+        return HTMLResponse("OAuth not configured", status_code=500)
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            token_resp = await client.post(
+                settings.whop_token_url,
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": settings.oauth_redirect_url,
+                    "client_id": settings.whop_client_id,
+                    "client_secret": settings.whop_client_secret,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+        if token_resp.status_code != 200:
+            return HTMLResponse("Token exchange failed", status_code=401)
+        token_data = token_resp.json()
+        access_token = token_data.get("access_token")
+        if not access_token:
+            return HTMLResponse("No access token", status_code=401)
+        # Simple page to stash token to localStorage then redirect home
+        html = f"""
+<!doctype html><html><body>
+<script>
+localStorage.setItem('whop_token', '{access_token}');
+window.location.href = '/';
+</script>
+</body></html>
+"""
+        return HTMLResponse(html)
+    except Exception:
+        return HTMLResponse("OAuth error", status_code=500)
 
 
 @app.websocket("/ws")

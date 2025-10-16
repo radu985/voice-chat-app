@@ -3,3 +3,4 @@ uvicorn[standard]==0.32.0
 python-dotenv==1.0.1
 pydantic==2.9.2
 orjson==3.10.7
+httpx==0.27.2
