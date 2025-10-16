@@ -1,45 +1,52 @@
 # Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-*.so
+*$py.class
 
-# Virtual environments
+# Virtual envs
 .venv/
 venv/
-ENV/
+env/
+
+# Env files
+.env
+.env.*
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.coverage.
+
+# Type checkers / tools
+.mypy_cache/
+.pyre/
+.pytype/
+.cache/
 
 # Editors/OS
 .vscode/
-*.code-workspace
+.idea/
 .DS_Store
 Thumbs.db
+
+# Node (if any)
+node_modules/
 
 # Logs
 logs/
 *.log
 
-# Environment
-.env
-.env.*
-!.env.example
+# Cursor/agent artifacts
+.cursor/
+.agent-tools/
 
-# Build artifacts
-dist/
-build/
-*.egg-info/
-
-# Node (future tooling)
-node_modules/
-
-# Cache
-.cache/
-.pytest_cache/
-
-* text=auto
-*.py text eol=lf
-*.js text eol=lf
-*.css text eol=lf
-*.html text eol=lf
-*.sh text eol=lf
+# Frontend maps
+public/**/*.map
