@@ -53,10 +53,20 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/debug")
+async def debug():
+    return {
+        "client_id": settings.whop_client_id,
+        "auth_url": settings.whop_auth_url,
+        "redirect_url": settings.oauth_redirect_url,
+        "require_auth": settings.require_auth
+    }
+
+
 @app.get("/auth/login")
 async def auth_login():
     if not settings.whop_auth_url or not settings.whop_client_id or not settings.oauth_redirect_url:
-        return Response(status_code=500, content="OAuth not configured")
+        return Response(status_code=500, content=f"OAuth not configured: auth_url={settings.whop_auth_url}, client_id={settings.whop_client_id}, redirect_url={settings.oauth_redirect_url}")
     state = secrets.token_urlsafe(24)
     params = {
         "response_type": "code",
