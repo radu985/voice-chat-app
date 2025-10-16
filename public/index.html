@@ -14,9 +14,8 @@
     <div class="app">
       <aside class="sidebar">
         <h1>Channels</h1>
+        <a href="/auth/login" id="signin" class="signin">Sign in with Whop</a>
         <div class="join-form">
-          <button id="loginBtn">Sign in with Whop</button>
-          <div id="authState" class="auth-state"></div>
           <input id="room" placeholder="room-id" />
           <input id="name" placeholder="your name" />
           <button id="joinBtn">Join</button>
@@ -52,6 +51,24 @@
     </div>
 
     <div id="toasts" class="toasts"></div>
+
+    <script>
+      (function(){
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get('token');
+        if (token) {
+          try { localStorage.setItem('whop_token', token); } catch(e) {}
+          const url = new URL(window.location.href);
+          url.searchParams.delete('token');
+          window.history.replaceState({}, '', url.toString());
+          const btn = document.getElementById('signin');
+          if (btn) btn.textContent = 'Signed in';
+        } else {
+          const t = localStorage.getItem('whop_token');
+          if (t) { const btn = document.getElementById('signin'); if (btn) btn.textContent = 'Signed in'; }
+        }
+      })();
+    </script>
 
     <script src="/static/app.js"></script>
   </body>

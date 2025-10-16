@@ -1,13 +1,13 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response, RedirectResponse, HTMLResponse
+from fastapi.responses import FileResponse, Response, RedirectResponse
 from typing import Optional
 import os
 import orjson
 import secrets
+import urllib.parse
 import httpx
-from urllib.parse import urlencode
 
 from app.core.config import settings
 from app.services.rooms import RoomService
@@ -23,6 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# CSP for embedding inside whop.com
 @app.middleware("http")
 async def csp_headers(request: Request, call_next):
     resp: Response = await call_next(request)
@@ -36,7 +37,8 @@ room_service = RoomService()
 
 
 @app.get("/")
-async def root():
+async def root(token: Optional[str] = None):
+    # If token is provided via query (?token=..), render index and let frontend stash it
     index_path = os.path.join(public_dir, "index.html")
     return FileResponse(index_path)
 
@@ -53,30 +55,29 @@ async def health():
 
 @app.get("/auth/login")
 async def auth_login():
-    if not all([settings.whop_auth_url, settings.whop_client_id, settings.oauth_redirect_url]):
-        return HTMLResponse("OAuth not configured", status_code=500)
+    if not settings.whop_auth_url or not settings.whop_client_id or not settings.oauth_redirect_url:
+        return Response(status_code=500, content="OAuth not configured")
     state = secrets.token_urlsafe(24)
     params = {
-        "client_id": settings.whop_client_id,
         "response_type": "code",
+        "client_id": settings.whop_client_id,
         "redirect_uri": settings.oauth_redirect_url,
-        "scope": "openid profile email",
+        "scope": "openid profile",
         "state": state,
     }
-    url = f"{settings.whop_auth_url}?{urlencode(params)}"
+    url = settings.whop_auth_url + "?" + urllib.parse.urlencode(params)
     return RedirectResponse(url)
 
 
 @app.get("/auth/callback")
 async def auth_callback(code: Optional[str] = None, state: Optional[str] = None):
     if not code:
-        return HTMLResponse("Missing code", status_code=400)
-    if not all([settings.whop_token_url, settings.whop_client_id, settings.whop_client_secret, settings.oauth_redirect_url]):
-        return HTMLResponse("OAuth not configured", status_code=500)
-
+        return RedirectResponse("/")
+    if not settings.whop_token_url or not settings.whop_client_id or not settings.whop_client_secret or not settings.oauth_redirect_url:
+        return Response(status_code=500, content="OAuth not configured")
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            token_resp = await client.post(
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.post(
                 settings.whop_token_url,
                 data={
                     "grant_type": "authorization_code",
@@ -87,24 +88,17 @@ async def auth_callback(code: Optional[str] = None, state: Optional[str] = None)
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
-        if token_resp.status_code != 200:
-            return HTMLResponse("Token exchange failed", status_code=401)
-        token_data = token_resp.json()
+        if res.status_code != 200:
+            return RedirectResponse("/")
+        token_data = res.json()
         access_token = token_data.get("access_token")
         if not access_token:
-            return HTMLResponse("No access token", status_code=401)
-        # Simple page to stash token to localStorage then redirect home
-        html = f"""
-<!doctype html><html><body>
-<script>
-localStorage.setItem('whop_token', '{access_token}');
-window.location.href = '/';
-</script>
-</body></html>
-"""
-        return HTMLResponse(html)
+            return RedirectResponse("/")
+        # Pass token to frontend via URL param; frontend will stash it to localStorage
+        redirect_url = f"/?token={urllib.parse.quote(access_token)}"
+        return RedirectResponse(redirect_url)
     except Exception:
-        return HTMLResponse("OAuth error", status_code=500)
+        return RedirectResponse("/")
 
 
 @app.websocket("/ws")
