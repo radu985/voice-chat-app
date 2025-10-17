@@ -93,11 +93,19 @@ async def auth_login():
 
 @app.get("/auth/callback")
 async def auth_callback(code: Optional[str] = None, state: Optional[str] = None):
+    print(f"DEBUG: OAuth callback received - code: {bool(code)}, state: {bool(state)}")
+    
     if not code:
+        print("DEBUG: No authorization code received")
         return RedirectResponse("/")
+        
     if not settings.whop_token_url or not settings.whop_client_id or not settings.whop_client_secret or not settings.oauth_redirect_url:
+        print("DEBUG: OAuth configuration missing")
         return Response(status_code=500, content="OAuth not configured")
+        
     try:
+        print(f"DEBUG: Exchanging code for token at {settings.whop_token_url}")
+        
         async with httpx.AsyncClient(timeout=10) as client:
             res = await client.post(
                 settings.whop_token_url,
@@ -110,16 +118,30 @@ async def auth_callback(code: Optional[str] = None, state: Optional[str] = None)
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
+            
+        print(f"DEBUG: Token exchange response status: {res.status_code}")
+        print(f"DEBUG: Token exchange response body: {res.text}")
+        
         if res.status_code != 200:
+            print(f"DEBUG: Token exchange failed with status {res.status_code}")
             return RedirectResponse("/")
+            
         token_data = res.json()
         access_token = token_data.get("access_token")
+        
         if not access_token:
+            print("DEBUG: No access token in response")
             return RedirectResponse("/")
+            
+        print(f"DEBUG: Successfully obtained access token: {access_token[:20]}...")
+        
         # Pass token to frontend via URL param; frontend will stash it to localStorage
         redirect_url = f"/?token={urllib.parse.quote(access_token)}"
+        print(f"DEBUG: Redirecting to: {redirect_url}")
         return RedirectResponse(redirect_url)
-    except Exception:
+        
+    except Exception as e:
+        print(f"DEBUG: Exception during token exchange: {e}")
         return RedirectResponse("/")
 
 
