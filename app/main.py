@@ -92,12 +92,16 @@ async def auth_login():
 
 
 @app.get("/auth/callback")
-async def auth_callback(code: Optional[str] = None, state: Optional[str] = None):
+async def auth_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None):
+    print(f"DEBUG: OAuth callback received - Full URL: {request.url}")
     print(f"DEBUG: OAuth callback received - code: {bool(code)}, state: {bool(state)}")
+    print(f"DEBUG: Expected redirect URI: {settings.oauth_redirect_url}")
     
     if not code:
-        print("DEBUG: No authorization code received")
-        return RedirectResponse("/")
+        print("DEBUG: No authorization code received - likely redirect URI mismatch")
+        print("DEBUG: Check that Whop OAuth app redirect URI exactly matches:")
+        print(f"DEBUG: Expected: {settings.oauth_redirect_url}")
+        return RedirectResponse("/?error=oauth_failed&reason=no_code")
         
     if not settings.whop_token_url or not settings.whop_client_id or not settings.whop_client_secret or not settings.oauth_redirect_url:
         print("DEBUG: OAuth configuration missing")
@@ -123,15 +127,15 @@ async def auth_callback(code: Optional[str] = None, state: Optional[str] = None)
         print(f"DEBUG: Token exchange response body: {res.text}")
         
         if res.status_code != 200:
-            print(f"DEBUG: Token exchange failed with status {res.status_code}")
-            return RedirectResponse("/")
+            print(f"ERROR: Token exchange failed with status {res.status_code}: {res.text}")
+            return RedirectResponse(f"/?error=oauth_failed&reason=token_exchange_failed&status={res.status_code}")
             
         token_data = res.json()
         access_token = token_data.get("access_token")
         
         if not access_token:
-            print("DEBUG: No access token in response")
-            return RedirectResponse("/")
+            print("ERROR: No access_token in token exchange response")
+            return RedirectResponse("/?error=oauth_failed&reason=no_access_token")
             
         print(f"DEBUG: Successfully obtained access token: {access_token[:20]}...")
         
@@ -140,9 +144,15 @@ async def auth_callback(code: Optional[str] = None, state: Optional[str] = None)
         print(f"DEBUG: Redirecting to: {redirect_url}")
         return RedirectResponse(redirect_url)
         
+    except httpx.HTTPStatusError as e:
+        print(f"ERROR: HTTP Status Error during token exchange: {e.response.status_code} - {e.response.text}")
+        return RedirectResponse(f"/?error=oauth_failed&reason=http_error&status={e.response.status_code}")
+    except httpx.RequestError as e:
+        print(f"ERROR: Request Error during token exchange: {e}")
+        return RedirectResponse(f"/?error=oauth_failed&reason=request_error")
     except Exception as e:
-        print(f"DEBUG: Exception during token exchange: {e}")
-        return RedirectResponse("/")
+        print(f"ERROR: Unexpected error during OAuth callback: {e}")
+        return RedirectResponse(f"/?error=oauth_failed&reason=unexpected_error")
 
 
 @app.websocket("/ws")

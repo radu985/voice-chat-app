@@ -56,11 +56,21 @@
       (function(){
         const params = new URLSearchParams(window.location.search);
         const token = params.get('token');
+        const error = params.get('error');
+        const reason = params.get('reason');
+        
+        if (error) {
+          console.error('OAuth Error:', error, reason);
+          alert(`OAuth Error: ${error}\nReason: ${reason}\n\nPlease check your Whop OAuth configuration.`);
+        }
+        
         console.log('token:', token);
         if (token) {
           try { localStorage.setItem('whop_token', token); } catch(e) {}
           const url = new URL(window.location.href);
           url.searchParams.delete('token');
+          url.searchParams.delete('error');
+          url.searchParams.delete('reason');
           window.history.replaceState({}, '', url.toString());
           const btn = document.getElementById('signin');
           if (btn) btn.textContent = 'Signed in';
