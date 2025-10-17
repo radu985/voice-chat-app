@@ -1,0 +1,5 @@
+{
+	"dependencies": {
+		"@whop/api": "^0.0.51"
+	}
+}
