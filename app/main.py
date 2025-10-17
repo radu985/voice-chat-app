@@ -59,9 +59,21 @@ async def debug():
         "client_id": settings.whop_client_id,
         "auth_url": settings.whop_auth_url,
         "redirect_url": settings.oauth_redirect_url,
-        "require_auth": settings.require_auth
+        "require_auth": settings.require_auth,
+        "token_url": settings.whop_token_url,
+        "userinfo_url": settings.whop_userinfo_url,
+        "client_secret_set": bool(settings.whop_client_secret)
     }
 
+@app.get("/debug/token")
+async def debug_token(token: str):
+    """Test token verification endpoint"""
+    whop_user = await verify_whop_token(token)
+    return {
+        "token_provided": bool(token),
+        "verification_result": whop_user,
+        "userinfo_url": settings.whop_userinfo_url
+    }
 
 @app.get("/auth/login")
 async def auth_login():

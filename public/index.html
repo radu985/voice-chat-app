@@ -56,6 +56,7 @@
       (function(){
         const params = new URLSearchParams(window.location.search);
         const token = params.get('token');
+        console.log('token:', token);
         if (token) {
           try { localStorage.setItem('whop_token', token); } catch(e) {}
           const url = new URL(window.location.href);
