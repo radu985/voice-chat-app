@@ -15,6 +15,14 @@ from app.integrations.whop import verify_whop_token, check_product_access
 
 app = FastAPI(title="WHOP Voice Chat App", version="0.1.0")
 
+# Add startup logging
+@app.on_event("startup")
+async def startup_event():
+    print("WHOP Voice Chat App starting up...")
+    print(f"Host: {settings.host}, Port: {settings.port}")
+    print(f"Require Auth: {settings.require_auth}")
+    print(f"CORS Origins: {settings.cors_allow_origins}")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allow_origins,
@@ -32,7 +40,12 @@ async def csp_headers(request: Request, call_next):
     return resp
 
 public_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "public")
-app.mount("/static", StaticFiles(directory=public_dir), name="static")
+print(f"Public directory: {public_dir}")
+print(f"Public directory exists: {os.path.exists(public_dir)}")
+if os.path.exists(public_dir):
+    app.mount("/static", StaticFiles(directory=public_dir), name="static")
+else:
+    print("WARNING: Public directory not found, static files may not work")
 
 room_service = RoomService()
 
@@ -130,7 +143,7 @@ async def whop_webhook(request: Request):
     except Exception as e:
         print(f"ERROR: Failed to process Whop webhook: {e}")
         return {"status": "error", "message": str(e)}
-
+        
 @app.get("/whop/manifest")
 async def whop_manifest():
     """Return the Whop app manifest"""
@@ -327,5 +340,5 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
-
+    print(f"Starting app on {settings.host}:{settings.port}")
     uvicorn.run("app.main:app", host=settings.host, port=settings.port, reload=True)
