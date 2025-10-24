@@ -13,3 +13,5 @@ services:
         value: true
       - key: CORS_ALLOW_ORIGINS
         value: https://whop.com,https://*.whop.com
+      - key: WHOP_COMPANY_ID
+        value: biz_HFS495F0yLsEIg
