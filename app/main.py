@@ -350,19 +350,12 @@ async def websocket_endpoint(websocket: WebSocket):
             await room_service.broadcast(room_id, {"type": "peer-left", "clientId": client_id, "name": name})
 
 
-# Catch-all for Whop app paths (must be last)
-@app.get("/{path:path}")
-async def catch_all_whop_app(request: Request, path: str):
-    """Catch-all endpoint for Whop app paths"""
-    print(f"DEBUG: Catch-all endpoint hit with path: {path}")
-    
-    # If it's a Whop app-related path, redirect to the main app
-    if path.startswith("app") or path.startswith("whop"):
-        print(f"DEBUG: Redirecting Whop path '{path}' to /whop/app")
-        return RedirectResponse("/whop/app")
-    
-    # For other paths, return 404
-    return Response(status_code=404, content="Not Found")
+# Additional Whop app endpoints for different URL patterns
+@app.get("/voice-chat-v-1-nQOQn1GiFsAUox/app/")
+async def whop_app_specific_redirect(request: Request):
+    """Handle the specific Whop app URL pattern"""
+    print(f"DEBUG: Handling specific Whop app URL pattern")
+    return RedirectResponse("/whop/app")
 
 
 if __name__ == "__main__":
