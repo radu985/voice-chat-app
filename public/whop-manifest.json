@@ -1,0 +1,26 @@
+{
+  "name": "Voice Chat",
+  "description": "Real-time voice and video chat with WebRTC technology",
+  "version": "1.0.0",
+  "author": "Your Name",
+  "app_url": "/whop/app",
+  "install_url": "/whop/install",
+  "uninstall_url": "/whop/uninstall",
+  "webhook_url": "/whop/webhook",
+  "permissions": [
+    "user.read",
+    "subscription.read"
+  ],
+  "features": [
+    "Real-time voice communication",
+    "Text chat functionality",
+    "Voice pitch visualization",
+    "Multiple voice channels",
+    "Cross-platform compatibility"
+  ],
+  "iframe": {
+    "width": "100%",
+    "height": "600px",
+    "resizable": true
+  }
+}

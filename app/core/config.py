@@ -21,6 +21,7 @@ class Settings(BaseModel):
     whop_token_url: str | None = os.getenv("WHOP_TOKEN_URL")
     whop_userinfo_url: str | None = os.getenv("WHOP_USERINFO_URL")
     oauth_redirect_url: str | None = os.getenv("OAUTH_REDIRECT_URL")
+    whop_product_id: str | None = os.getenv("WHOP_PRODUCT_ID")
 
 
 settings = Settings()

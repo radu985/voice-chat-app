@@ -10,7 +10,7 @@
       - key: APP_HOST
         value: 0.0.0.0
       - key: REQUIRE_AUTH
-        value: false
+        value: true
       - key: CORS_ALLOW_ORIGINS
         value: https://whop.com,https://*.whop.com
 }

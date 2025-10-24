@@ -11,7 +11,7 @@ import httpx
 
 from app.core.config import settings
 from app.services.rooms import RoomService
-from app.integrations.whop import verify_whop_token
+from app.integrations.whop import verify_whop_token, check_product_access
 
 app = FastAPI(title="WHOP Voice Chat App", version="0.1.0")
 
@@ -28,6 +28,7 @@ app.add_middleware(
 async def csp_headers(request: Request, call_next):
     resp: Response = await call_next(request)
     resp.headers["Content-Security-Policy"] = "frame-ancestors https://whop.com https://*.whop.com;"
+    resp.headers["X-Frame-Options"] = "ALLOWALL"
     return resp
 
 public_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "public")
@@ -62,7 +63,8 @@ async def debug():
         "require_auth": settings.require_auth,
         "token_url": settings.whop_token_url,
         "userinfo_url": settings.whop_userinfo_url,
-        "client_secret_set": bool(settings.whop_client_secret)
+        "client_secret_set": bool(settings.whop_client_secret),
+        "product_id": settings.whop_product_id
     }
 
 @app.get("/debug/token")
@@ -74,6 +76,66 @@ async def debug_token(token: str):
         "verification_result": whop_user,
         "userinfo_url": settings.whop_userinfo_url
     }
+
+@app.get("/product-info")
+async def product_info():
+    """Return product information for the voice chat app"""
+    return {
+        "name": "Voice Chat App",
+        "description": "Real-time voice communication with text chat and voice pitch visualization",
+        "features": [
+            "Real-time voice communication",
+            "Text chat functionality", 
+            "Voice pitch visualization",
+            "Multiple voice channels",
+            "Cross-platform compatibility",
+            "WebRTC-based communication"
+        ],
+        "product_id": settings.whop_product_id,
+        "requires_auth": settings.require_auth
+    }
+
+# Whop App Integration Endpoints
+@app.get("/whop/app")
+async def whop_app(request: Request):
+    """Main Whop app endpoint - this is what loads when clicking the app in Whop dashboard"""
+    # Get Whop context from headers
+    whop_user_id = request.headers.get("X-Whop-User-Id")
+    whop_company_id = request.headers.get("X-Whop-Company-Id")
+    whop_subscription_id = request.headers.get("X-Whop-Subscription-Id")
+    
+    print(f"DEBUG: Whop app request - User: {whop_user_id}, Company: {whop_company_id}, Subscription: {whop_subscription_id}")
+    
+    # Render the main app interface
+    index_path = os.path.join(public_dir, "index.html")
+    return FileResponse(index_path)
+
+@app.get("/whop/install")
+async def whop_install():
+    """Called when the app is installed in Whop"""
+    return {"status": "installed", "message": "Voice Chat app installed successfully"}
+
+@app.get("/whop/uninstall")
+async def whop_uninstall():
+    """Called when the app is uninstalled from Whop"""
+    return {"status": "uninstalled", "message": "Voice Chat app uninstalled"}
+
+@app.post("/whop/webhook")
+async def whop_webhook(request: Request):
+    """Handle Whop webhooks (subscription events, etc.)"""
+    try:
+        body = await request.json()
+        print(f"DEBUG: Whop webhook received: {body}")
+        return {"status": "received"}
+    except Exception as e:
+        print(f"ERROR: Failed to process Whop webhook: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.get("/whop/manifest")
+async def whop_manifest():
+    """Return the Whop app manifest"""
+    manifest_path = os.path.join(public_dir, "whop-manifest.json")
+    return FileResponse(manifest_path, media_type="application/json")
 
 @app.get("/auth/login")
 async def auth_login():
@@ -175,9 +237,14 @@ async def websocket_endpoint(websocket: WebSocket):
                 token = message.get("token")
 
                 if settings.require_auth:
-                    whop_user = await verify_whop_token(token)
-                    if not whop_user:
-                        await websocket.send_text(orjson.dumps({"type": "error", "error": "unauthorized"}).decode())
+                    # Check if user has access to the voice chat product
+                    has_access = await check_product_access(token, settings.whop_product_id)
+                    if not has_access:
+                        await websocket.send_text(orjson.dumps({
+                            "type": "error", 
+                            "error": "forbidden",
+                            "message": "You need to purchase the Voice Chat product to access this feature"
+                        }).decode())
                         await websocket.close()
                         return
 

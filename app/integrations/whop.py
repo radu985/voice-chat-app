@@ -45,3 +45,27 @@ async def verify_whop_token(token: Optional[str]) -> Optional[Dict]:
     except Exception as e:
         print(f"DEBUG: Unexpected error during token verification: {e}")
         return None
+
+async def check_product_access(token: Optional[str], product_id: Optional[str] = None) -> bool:
+    """
+    Check if user has access to the voice chat product.
+    If product_id is provided, check specific product access.
+    If not provided, assume any valid Whop user has access.
+    """
+    if not token:
+        return False
+        
+    # First verify the token is valid
+    user_data = await verify_whop_token(token)
+    if not user_data:
+        return False
+    
+    # If no specific product_id required, any valid user has access
+    if not product_id:
+        return True
+    
+    # TODO: Implement product-specific access check
+    # This would require calling Whop's products/entitlements API
+    # For now, return True if user is authenticated
+    print(f"DEBUG: Product access check for product_id={product_id}, user={user_data.get('id')}")
+    return True

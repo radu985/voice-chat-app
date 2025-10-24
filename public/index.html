@@ -59,9 +59,19 @@
         const error = params.get('error');
         const reason = params.get('reason');
         
+        // Check if running inside Whop iframe
+        const isWhopEmbedded = window.parent !== window || 
+                              window.location !== window.parent.location ||
+                              document.referrer.includes('whop.com');
+        
+        console.log('Running in Whop iframe:', isWhopEmbedded);
+        console.log('Referrer:', document.referrer);
+        
         if (error) {
           console.error('OAuth Error:', error, reason);
-          alert(`OAuth Error: ${error}\nReason: ${reason}\n\nPlease check your Whop OAuth configuration.`);
+          if (!isWhopEmbedded) {
+            alert(`OAuth Error: ${error}\nReason: ${reason}\n\nPlease check your Whop OAuth configuration.`);
+          }
         }
         
         console.log('token:', token);
@@ -76,7 +86,26 @@
           if (btn) btn.textContent = 'Signed in';
         } else {
           const t = localStorage.getItem('whop_token');
-          if (t) { const btn = document.getElementById('signin'); if (btn) btn.textContent = 'Signed in'; }
+          if (t) { 
+            const btn = document.getElementById('signin'); 
+            if (btn) btn.textContent = 'Signed in'; 
+          }
+        }
+        
+        // If running in Whop, hide the sign-in button and show embedded mode
+        if (isWhopEmbedded) {
+          const signinBtn = document.getElementById('signin');
+          if (signinBtn) {
+            signinBtn.style.display = 'none';
+          }
+          
+          // Add a welcome message for Whop users
+          const welcomeMsg = document.createElement('div');
+          welcomeMsg.innerHTML = '<p style="color: #22d3ee; margin: 10px 0;">Welcome to Voice Chat! Join a room to start chatting.</p>';
+          const joinForm = document.querySelector('.join-form');
+          if (joinForm && joinForm.parentNode) {
+            joinForm.parentNode.insertBefore(welcomeMsg, joinForm);
+          }
         }
       })();
     </script>
