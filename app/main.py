@@ -351,10 +351,17 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 # Additional Whop app endpoints for different URL patterns
-@app.get("/voice-chat-v-1-nQOQn1GiFsAUox/app/")
-async def whop_app_specific_redirect(request: Request):
-    """Handle the specific Whop app URL pattern"""
-    print(f"DEBUG: Handling specific Whop app URL pattern")
+@app.get("/voice-chat-v-1-{app_id}/app/")
+async def whop_app_dynamic_redirect(request: Request, app_id: str):
+    """Handle any Whop app URL pattern with dynamic app ID"""
+    print(f"DEBUG: Handling Whop app URL pattern with app_id: {app_id}")
+    return RedirectResponse("/whop/app")
+
+# General pattern for any app ending with /app/
+@app.get("/{app_name}/app/")
+async def whop_app_general_redirect(request: Request, app_name: str):
+    """Handle any app name ending with /app/"""
+    print(f"DEBUG: Handling general Whop app URL pattern: {app_name}/app/")
     return RedirectResponse("/whop/app")
 
 
