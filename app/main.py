@@ -150,6 +150,18 @@ async def whop_manifest():
     manifest_path = os.path.join(public_dir, "whop-manifest.json")
     return FileResponse(manifest_path, media_type="application/json")
 
+@app.get("/app/")
+async def whop_app_redirect(request: Request):
+    """Redirect from /app/ to /whop/app for Whop compatibility"""
+    print(f"DEBUG: Redirecting from /app/ to /whop/app")
+    return RedirectResponse("/whop/app")
+
+@app.get("/app")
+async def whop_app_redirect_no_slash(request: Request):
+    """Redirect from /app to /whop/app for Whop compatibility"""
+    print(f"DEBUG: Redirecting from /app to /whop/app")
+    return RedirectResponse("/whop/app")
+
 @app.get("/auth/login")
 async def auth_login():
     if not settings.whop_auth_url or not settings.whop_client_id or not settings.oauth_redirect_url:
@@ -336,6 +348,21 @@ async def websocket_endpoint(websocket: WebSocket):
             name = room_service.get_name(room_id, client_id)
             room_service.leave(room_id, client_id)
             await room_service.broadcast(room_id, {"type": "peer-left", "clientId": client_id, "name": name})
+
+
+# Catch-all for Whop app paths (must be last)
+@app.get("/{path:path}")
+async def catch_all_whop_app(request: Request, path: str):
+    """Catch-all endpoint for Whop app paths"""
+    print(f"DEBUG: Catch-all endpoint hit with path: {path}")
+    
+    # If it's a Whop app-related path, redirect to the main app
+    if path.startswith("app") or path.startswith("whop"):
+        print(f"DEBUG: Redirecting Whop path '{path}' to /whop/app")
+        return RedirectResponse("/whop/app")
+    
+    # For other paths, return 404
+    return Response(status_code=404, content="Not Found")
 
 
 if __name__ == "__main__":
