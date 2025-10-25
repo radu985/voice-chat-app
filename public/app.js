@@ -9,6 +9,9 @@ const state = {
   analyser: null,
   vadInterval: null,
   pitchInterval: null,
+  isBackgroundTab: false,
+  notificationPermission: 'default',
+  audioContexts: new Set(),
 };
 
 const el = (id) => document.getElementById(id);
@@ -18,7 +21,7 @@ const messages = el('messages');
 const alertModal = () => document.getElementById('alertModal');
 const toastsEl = () => document.getElementById('toasts');
 
-function toast(text){
+function toast(text, showNotification = false){
   const c = toastsEl();
   if (!c) return;
   const t = document.createElement('div');
@@ -26,6 +29,17 @@ function toast(text){
   t.innerHTML = `<span class="title">Notification</span>${text}`;
   c.appendChild(t);
   setTimeout(()=>{ if (t.parentNode) t.parentNode.removeChild(t); }, 3500);
+  
+  // Show browser notification if in background and permission granted
+  if (showNotification && state.isBackgroundTab && Notification.permission === 'granted') {
+    new Notification('Voice Chat', {
+      body: text,
+      icon: '/static/app-icon.png', // You might want to add an icon
+      badge: '/static/app-icon.png',
+      tag: 'voice-chat',
+      requireInteraction: false
+    });
+  }
 }
 
 function showAlert(html){
@@ -191,13 +205,23 @@ function setupLocalVAD(stream){
     src.connect(analyser); 
     const data = new Uint8Array(analyser.frequencyBinCount); 
     state.analyser = analyser; 
+    
+    // Track this audio context for background handling
+    state.audioContexts.add(ctx);
+    
     if (state.vadInterval) clearInterval(state.vadInterval); 
     state.vadInterval = setInterval(()=>{ 
       analyser.getByteFrequencyData(data); 
       let sum = 0; for (let i=0;i<data.length;i++) sum += data[i]; 
       const avg = sum / data.length; 
       setSpeakingUI('local', avg > 25 && !state.muted); 
+      
+      // Keep audio context active even in background
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(e => console.warn('Failed to resume audio context:', e));
+      }
     }, 120); 
+    
     // Ensure audio context is running
     if (ctx.state === 'suspended') {
       ctx.resume().catch(e => console.warn('Failed to resume audio context:', e));
@@ -214,6 +238,10 @@ function estimatePitchFromStream(stream, callback){
     source.connect(analyser);
     const buffer = new Float32Array(analyser.fftSize);
     const sampleRate = audioCtx.sampleRate;
+    
+    // Track this audio context for background handling
+    state.audioContexts.add(audioCtx);
+    
     function autoCorrelate(buf, sr){
       let SIZE = buf.length;
       let rms = 0; for (let i=0;i<SIZE;i++){ let v = buf[i]; rms += v*v; }
@@ -231,7 +259,17 @@ function estimatePitchFromStream(stream, callback){
       let maxval=-1, maxpos=-1; for (let i=d; i<SIZE; i++){ if (c[i] > maxval){ maxval=c[i]; maxpos=i; } }
       let T = maxpos; if (T===0) return -1; return sr/T;
     }
-    function tick(){ analyser.getFloatTimeDomainData(buffer); const hz = autoCorrelate(buffer, sampleRate); callback(hz>80 && hz<500 ? hz : -1); }
+    function tick(){ 
+      analyser.getFloatTimeDomainData(buffer); 
+      const hz = autoCorrelate(buffer, sampleRate); 
+      callback(hz>80 && hz<500 ? hz : -1); 
+      
+      // Keep audio context active in background
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(e => console.warn('Failed to resume pitch audio context:', e));
+      }
+    }
+    
     // Ensure audio context is running
     if (audioCtx.state === 'suspended') {
       audioCtx.resume().catch(e => console.warn('Failed to resume pitch audio context:', e));
@@ -261,7 +299,13 @@ async function handleOffer(payload) { const from = payload.from; const pc = crea
 async function handleAnswer(payload) { const from = payload.from; const peer = state.peers.get(from); if (!peer?.pc) return; await peer.pc.setRemoteDescription({ type: 'answer', sdp: payload.sdp }); }
 async function handleIce(payload) { const from = payload.from; const peer = state.peers.get(from); if (!peer?.pc) return; try { await peer.pc.addIceCandidate(payload.candidate); } catch (e) { console.error('Failed to add ICE', e); } }
 
-function connect(roomId, name) { state.ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`); state.ws.onopen = () => { send({ type: 'join', roomId, name, token: localStorage.getItem('whop_token') || '' }); }; state.ws.onmessage = (ev) => { const msg = JSON.parse(ev.data); switch (msg.type) { case 'joined': handleJoined(msg); el('muteBtn').disabled = false; el('leaveBtn').disabled = false; break; case 'peer-joined': toast(`${msg.name} joined the room`); break; case 'peer-left': toast(`${msg.name || msg.clientId} left the room`); removePeerTile(msg.clientId); state.peers.delete(msg.clientId); break; case 'chat': { const isMe = msg.fromClientId && msg.fromClientId === state.clientId; appendMessage(`${isMe ? 'You' : msg.fromName}: ${msg.message}`, !!isMe); break; } case 'offer': handleOffer(msg); break; case 'answer': handleAnswer(msg); break; case 'ice': handleIce(msg); break; case 'mute': setMutedUI(msg.clientId, !!msg.muted); break; case 'media-state': { const target = state.peers.get(msg.clientId); if (target && target.stream) addPeerTile(msg.clientId, target.name || 'Peer', target.stream, false); break; } case 'pitch': setPitchUI(msg.clientId, msg.hz); break; case 'error': appendMessage(`Error: ${msg.error}`); break; } }; state.ws.onclose = () => { el('muteBtn').disabled = true; el('leaveBtn').disabled = true; el('enableMicBtn').disabled = true; if (state.pitchInterval) clearInterval(state.pitchInterval); if (state.vadInterval) clearInterval(state.vadInterval); }; }
+function connect(roomId, name) { 
+  // Request notification permission when joining
+  requestNotificationPermission();
+  
+  state.ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`); 
+  state.ws.onopen = () => { send({ type: 'join', roomId, name, token: localStorage.getItem('whop_token') || '' }); }; 
+  state.ws.onmessage = (ev) => { const msg = JSON.parse(ev.data); switch (msg.type) { case 'joined': handleJoined(msg); el('muteBtn').disabled = false; el('leaveBtn').disabled = false; break; case 'peer-joined': toast(`${msg.name} joined the room`); break; case 'peer-left': toast(`${msg.name || msg.clientId} left the room`); removePeerTile(msg.clientId); state.peers.delete(msg.clientId); break; case 'chat': { const isMe = msg.fromClientId && msg.fromClientId === state.clientId; appendMessage(`${isMe ? 'You' : msg.fromName}: ${msg.message}`, !!isMe); break; } case 'offer': handleOffer(msg); break; case 'answer': handleAnswer(msg); break; case 'ice': handleIce(msg); break; case 'mute': setMutedUI(msg.clientId, !!msg.muted); break; case 'media-state': { const target = state.peers.get(msg.clientId); if (target && target.stream) addPeerTile(msg.clientId, target.name || 'Peer', target.stream, false); break; } case 'pitch': setPitchUI(msg.clientId, msg.hz); break; case 'error': appendMessage(`Error: ${msg.error}`); break; } }; state.ws.onclose = () => { el('muteBtn').disabled = true; el('leaveBtn').disabled = true; el('enableMicBtn').disabled = true; if (state.pitchInterval) clearInterval(state.pitchInterval); if (state.vadInterval) clearInterval(state.vadInterval); }; }
 
 function setupUI() {
   const modal = alertModal(); if (modal) document.getElementById('alertClose').onclick = hideAlert;
@@ -275,3 +319,37 @@ function setupUI() {
 }
 
 window.addEventListener('load', setupUI);
+
+// Page Visibility API - Handle tab switching
+document.addEventListener('visibilitychange', () => {
+  state.isBackgroundTab = document.hidden;
+  
+  if (document.hidden) {
+    console.log('Tab is now in background - call continues');
+    // Keep audio contexts running
+    state.audioContexts.forEach(ctx => {
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(e => console.warn('Failed to resume audio context:', e));
+      }
+    });
+  } else {
+    console.log('Tab is now visible');
+  }
+});
+
+// Request notification permission when user joins a room
+async function requestNotificationPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    try {
+      const permission = await Notification.requestPermission();
+      state.notificationPermission = permission;
+      console.log('Notification permission:', permission);
+    } catch (e) {
+      console.warn('Notification request failed:', e);
+    }
+  }
+}
+
+
+
+
