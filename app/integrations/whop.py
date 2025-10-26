@@ -52,16 +52,28 @@ async def check_product_access(token: Optional[str], product_id: Optional[str] =
     If product_id is provided, check specific product access.
     If not provided, assume any valid Whop user has access.
     """
+    # If no Whop configuration is available, allow access (development mode)
+    if not settings.whop_userinfo_url or not settings.whop_client_id:
+        print("DEBUG: Whop configuration missing, allowing access (development mode)")
+        return True
+    
     if not token:
+        print("DEBUG: No token provided for product access check")
+        # If no specific product_id required, allow access even without token
+        if not product_id:
+            print("DEBUG: No product_id required, allowing access without token")
+            return True
         return False
         
     # First verify the token is valid
     user_data = await verify_whop_token(token)
     if not user_data:
+        print("DEBUG: Token verification failed, denying access")
         return False
     
     # If no specific product_id required, any valid user has access
     if not product_id:
+        print(f"DEBUG: No product_id required, allowing access for user {user_data.get('id')}")
         return True
     
     # TODO: Implement product-specific access check

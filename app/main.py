@@ -261,14 +261,24 @@ async def websocket_endpoint(websocket: WebSocket):
                 user_name = message.get("name") or "Guest"
                 token = message.get("token")
 
+                print(f"DEBUG: Join request - Room: {room_id}, User: {user_name}, Token: {bool(token)}, RequireAuth: {settings.require_auth}")
+
                 if settings.require_auth:
                     # Check if user has access to the voice chat product
                     has_access = await check_product_access(token, settings.whop_product_id)
                     if not has_access:
+                        # Provide more helpful error message based on configuration
+                        if not settings.whop_userinfo_url or not settings.whop_client_id:
+                            error_message = "Authentication is required but Whop configuration is missing. Please contact the administrator."
+                        elif not token:
+                            error_message = "Authentication required. Please sign in with Whop first."
+                        else:
+                            error_message = "You need to purchase the Voice Chat product to access this feature"
+                        
                         await websocket.send_text(orjson.dumps({
                             "type": "error", 
                             "error": "forbidden",
-                            "message": "You need to purchase the Voice Chat product to access this feature"
+                            "message": error_message
                         }).decode())
                         await websocket.close()
                         return

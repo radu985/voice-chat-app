@@ -20,6 +20,8 @@ const videos = el('videos');
 const messages = el('messages');
 const alertModal = () => document.getElementById('alertModal');
 const toastsEl = () => document.getElementById('toasts');
+const participantsSection = el('participants-section');
+const participantsList = el('participants-list');
 
 function toast(text, showNotification = false){
   const c = toastsEl();
@@ -143,6 +145,70 @@ function renderPeersList(peers) {
     const li = document.createElement('li');
     li.textContent = `${p.name} (${p.clientId})`;
     peersList.appendChild(li);
+  });
+}
+
+function showParticipantsSection() {
+  if (participantsSection) {
+    participantsSection.classList.remove('hidden');
+  }
+}
+
+function hideParticipantsSection() {
+  if (participantsSection) {
+    participantsSection.classList.add('hidden');
+  }
+}
+
+function updateParticipantsList(peers) {
+  if (!participantsList) return;
+  
+  participantsList.innerHTML = '';
+  
+  // Add current user
+  if (state.name && state.clientId) {
+    const currentUserLi = document.createElement('li');
+    currentUserLi.innerHTML = `
+      <span class="participant-name">${state.name} (you)</span>
+      <span class="participant-id">${state.clientId}</span>
+    `;
+    participantsList.appendChild(currentUserLi);
+  }
+  
+  // Add other participants
+  peers.forEach((peer) => {
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span class="participant-name">${peer.name}</span>
+      <span class="participant-id">${peer.clientId}</span>
+    `;
+    participantsList.appendChild(li);
+  });
+}
+
+function updateParticipantsListFromPeers() {
+  if (!participantsList) return;
+  
+  participantsList.innerHTML = '';
+  
+  // Add current user
+  if (state.name && state.clientId) {
+    const currentUserLi = document.createElement('li');
+    currentUserLi.innerHTML = `
+      <span class="participant-name">${state.name} (you)</span>
+      <span class="participant-id">${state.clientId}</span>
+    `;
+    participantsList.appendChild(currentUserLi);
+  }
+  
+  // Add other participants from state.peers Map
+  state.peers.forEach((peer, clientId) => {
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span class="participant-name">${peer.name}</span>
+      <span class="participant-id">${clientId}</span>
+    `;
+    participantsList.appendChild(li);
   });
 }
 
@@ -283,6 +349,11 @@ function setupRemotePitch(clientId, stream){ estimatePitchFromStream(stream, (hz
 
 async function handleJoined(payload) {
   state.clientId = payload.clientId;
+  
+  // Show participants section and update the list
+  showParticipantsSection();
+  updateParticipantsList(payload.peers);
+  
   try {
     if (state.localStream) {
       const stream = state.localStream; renderPeersList(payload.peers);
@@ -305,7 +376,7 @@ function connect(roomId, name) {
   
   state.ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`); 
   state.ws.onopen = () => { send({ type: 'join', roomId, name, token: localStorage.getItem('whop_token') || '' }); }; 
-  state.ws.onmessage = (ev) => { const msg = JSON.parse(ev.data); switch (msg.type) { case 'joined': handleJoined(msg); el('muteBtn').disabled = false; el('leaveBtn').disabled = false; break; case 'peer-joined': toast(`${msg.name} joined the room`); break; case 'peer-left': toast(`${msg.name || msg.clientId} left the room`); removePeerTile(msg.clientId); state.peers.delete(msg.clientId); break; case 'chat': { const isMe = msg.fromClientId && msg.fromClientId === state.clientId; appendMessage(`${isMe ? 'You' : msg.fromName}: ${msg.message}`, !!isMe); break; } case 'offer': handleOffer(msg); break; case 'answer': handleAnswer(msg); break; case 'ice': handleIce(msg); break; case 'mute': setMutedUI(msg.clientId, !!msg.muted); break; case 'media-state': { const target = state.peers.get(msg.clientId); if (target && target.stream) addPeerTile(msg.clientId, target.name || 'Peer', target.stream, false); break; } case 'pitch': setPitchUI(msg.clientId, msg.hz); break; case 'error': appendMessage(`Error: ${msg.error}`); break; } }; state.ws.onclose = () => { el('muteBtn').disabled = true; el('leaveBtn').disabled = true; el('enableMicBtn').disabled = true; if (state.pitchInterval) clearInterval(state.pitchInterval); if (state.vadInterval) clearInterval(state.vadInterval); }; }
+  state.ws.onmessage = (ev) => { const msg = JSON.parse(ev.data); switch (msg.type) { case 'joined': handleJoined(msg); el('muteBtn').disabled = false; el('leaveBtn').disabled = false; break; case 'peer-joined': toast(`${msg.name} joined the room`); state.peers.set(msg.clientId, { name: msg.name }); updateParticipantsListFromPeers(); break; case 'peer-left': toast(`${msg.name || msg.clientId} left the room`); removePeerTile(msg.clientId); state.peers.delete(msg.clientId); updateParticipantsListFromPeers(); break; case 'chat': { const isMe = msg.fromClientId && msg.fromClientId === state.clientId; appendMessage(`${isMe ? 'You' : msg.fromName}: ${msg.message}`, !!isMe); break; } case 'offer': handleOffer(msg); break; case 'answer': handleAnswer(msg); break; case 'ice': handleIce(msg); break; case 'mute': setMutedUI(msg.clientId, !!msg.muted); break; case 'media-state': { const target = state.peers.get(msg.clientId); if (target && target.stream) addPeerTile(msg.clientId, target.name || 'Peer', target.stream, false); break; } case 'pitch': setPitchUI(msg.clientId, msg.hz); break; case 'error': appendMessage(`Error: ${msg.error}`); break; } }; state.ws.onclose = () => { el('muteBtn').disabled = true; el('leaveBtn').disabled = true; el('enableMicBtn').disabled = true; hideParticipantsSection(); if (state.pitchInterval) clearInterval(state.pitchInterval); if (state.vadInterval) clearInterval(state.vadInterval); }; }
 
 function setupUI() {
   const modal = alertModal(); if (modal) document.getElementById('alertClose').onclick = hideAlert;
@@ -315,7 +386,7 @@ function setupUI() {
   el('sendBtn').onclick = () => { sendCurrentMessage(); };
   el('msgInput').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCurrentMessage(); } });
   el('muteBtn').onclick = () => { state.muted = !state.muted; if (state.localStream) state.localStream.getAudioTracks().forEach(t => t.enabled = !state.muted); el('muteBtn').textContent = state.muted ? 'Unmute' : 'Mute'; send({ type: 'mute', muted: state.muted }); };
-  el('leaveBtn').onclick = () => { send({ type: 'leave' }); try { state.ws && state.ws.close(); } catch {} state.peers.forEach((p, id) => { try { p.pc && p.pc.close(); } catch {} removePeerTile(id); }); state.peers.clear(); hideAlert(); if (state.pitchInterval) clearInterval(state.pitchInterval); if (state.vadInterval) clearInterval(state.vadInterval); };
+  el('leaveBtn').onclick = () => { send({ type: 'leave' }); try { state.ws && state.ws.close(); } catch {} state.peers.forEach((p, id) => { try { p.pc && p.pc.close(); } catch {} removePeerTile(id); }); state.peers.clear(); hideAlert(); hideParticipantsSection(); if (state.pitchInterval) clearInterval(state.pitchInterval); if (state.vadInterval) clearInterval(state.vadInterval); };
 }
 
 window.addEventListener('load', setupUI);
