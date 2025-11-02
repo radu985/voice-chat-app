@@ -23,6 +23,53 @@ const toastsEl = () => document.getElementById('toasts');
 const participantsSection = el('participants-section');
 const participantsList = el('participants-list');
 
+// State persistence functions
+function saveRoomState(roomId, name, clientId) {
+  try {
+    localStorage.setItem('voice_chat_room_id', roomId);
+    localStorage.setItem('voice_chat_name', name);
+    if (clientId) {
+      localStorage.setItem('voice_chat_client_id', clientId);
+    }
+    localStorage.setItem('voice_chat_joined', 'true');
+  } catch (e) {
+    console.warn('Failed to save room state:', e);
+  }
+}
+
+function clearRoomState() {
+  try {
+    localStorage.removeItem('voice_chat_room_id');
+    localStorage.removeItem('voice_chat_name');
+    localStorage.removeItem('voice_chat_client_id');
+    localStorage.removeItem('voice_chat_joined');
+  } catch (e) {
+    console.warn('Failed to clear room state:', e);
+  }
+}
+
+function restoreRoomState() {
+  try {
+    const roomId = localStorage.getItem('voice_chat_room_id');
+    const name = localStorage.getItem('voice_chat_name');
+    const clientId = localStorage.getItem('voice_chat_client_id');
+    const wasJoined = localStorage.getItem('voice_chat_joined') === 'true';
+    
+    if (roomId && name) {
+      // Restore input field values
+      const roomInput = el('room');
+      const nameInput = el('name');
+      if (roomInput) roomInput.value = roomId;
+      if (nameInput) nameInput.value = name;
+      
+      return { roomId, name, clientId, wasJoined };
+    }
+  } catch (e) {
+    console.warn('Failed to restore room state:', e);
+  }
+  return null;
+}
+
 function toast(text, showNotification = false){
   const c = toastsEl();
   if (!c) return;
@@ -223,17 +270,22 @@ async function getMediaWithFallback() {
   catch (err) {
     console.warn('Falling back to audio-only', err);
     try { return await navigator.mediaDevices.getUserMedia(mediaConstraints(false)); }
-    catch (audioErr) { console.error('Media denied by system', audioErr); showAlert('Microphone (and/or camera) access is blocked. Please allow access for this site, then try again.'); throw audioErr; }
+    catch (audioErr) { 
+      console.log('No media access available - user can still join for text chat only'); 
+      return null; // Return null instead of throwing error
+    }
   }
 }
 
 async function ensureMedia() {
   if (state.localStream) return state.localStream;
   state.localStream = await getMediaWithFallback();
-  addPeerTile('local', state.name || 'Me', state.localStream, true);
-  setupLocalVAD(state.localStream);
-  setupLocalPitch(state.localStream);
-  send({ type: 'media-state', hasAudio: hasAudioTrack(state.localStream), hasVideo: hasVideoTrack(state.localStream) });
+  if (state.localStream) {
+    addPeerTile('local', state.name || 'Me', state.localStream, true);
+    setupLocalVAD(state.localStream);
+    setupLocalPitch(state.localStream);
+    send({ type: 'media-state', hasAudio: hasAudioTrack(state.localStream), hasVideo: hasVideoTrack(state.localStream) });
+  }
   return state.localStream;
 }
 
@@ -350,6 +402,11 @@ function setupRemotePitch(clientId, stream){ estimatePitchFromStream(stream, (hz
 async function handleJoined(payload) {
   state.clientId = payload.clientId;
   
+  // Save state with clientId when successfully joined
+  if (state.roomId && state.name) {
+    saveRoomState(state.roomId, state.name, state.clientId);
+  }
+  
   // Show participants section and update the list
   showParticipantsSection();
   updateParticipantsList(payload.peers);
@@ -361,7 +418,7 @@ async function handleJoined(payload) {
     } else {
       renderPeersList(payload.peers);
       for (const p of payload.peers) { const pc = createPeerConnection(p.clientId); state.peers.set(p.clientId, { pc, name: p.name }); const offer = await pc.createOffer(); await pc.setLocalDescription(offer); send({ type: 'offer', to: p.clientId, sdp: offer.sdp }); }
-      el('enableMicBtn').disabled = false; showAlert('You joined without microphone/camera. Click <b>Enable Mic</b> to grant access when ready.');
+      el('enableMicBtn').disabled = false; showAlert('You joined with text chat only. Click <b>Enable Mic</b> to join voice chat when ready.');
     }
   } catch (e) { appendMessage('Permission denied. You joined without mic. Click Enable Mic to retry.'); el('enableMicBtn').disabled = false; showAlert('Microphone/camera access failed. Please allow access for this site in the browser and Windows settings.'); }
 }
@@ -380,13 +437,23 @@ function connect(roomId, name) {
 
 function setupUI() {
   const modal = alertModal(); if (modal) document.getElementById('alertClose').onclick = hideAlert;
-  el('joinBtn').onclick = async () => { const room = el('room').value.trim(); const name = el('name').value.trim() || 'Guest'; if (!room) return; state.roomId = room; state.name = name; try { if (!state.localStream) { state.localStream = await getMediaWithFallback(); addPeerTile('local', name || 'Me', state.localStream, true); setupLocalVAD(state.localStream); setupLocalPitch(state.localStream); } } catch (e) { showAlert('Microphone/camera access is blocked. You can still join to listen. Click <b>Enable Mic</b> later to grant access.'); } connect(room, name); };
-  el('enableMicBtn').onclick = async () => { try { state.localStream = await getMediaWithFallback(); addPeerTile('local', state.name || 'Me', state.localStream, true); setupLocalVAD(state.localStream); setupLocalPitch(state.localStream); replaceOrAddTrackOnPeers(); send({ type: 'media-state', hasAudio: hasAudioTrack(state.localStream), hasVideo: hasVideoTrack(state.localStream) }); el('enableMicBtn').disabled = true; hideAlert(); } catch (e) { showAlert('Still no access to mic/camera. Check Windows privacy settings and browser site permissions.'); } };
+  
+  // Restore previous room state on page load
+  const restoredState = restoreRoomState();
+  if (restoredState) {
+    state.roomId = restoredState.roomId;
+    state.name = restoredState.name;
+    state.clientId = restoredState.clientId;
+    console.log('Restored previous room state:', restoredState);
+  }
+  
+  el('joinBtn').onclick = async () => { const room = el('room').value.trim(); const name = el('name').value.trim() || 'Guest'; if (!room) return; state.roomId = room; state.name = name; saveRoomState(room, name, null); // Save state immediately if (!state.localStream) { state.localStream = await getMediaWithFallback(); if (state.localStream) { addPeerTile('local', name || 'Me', state.localStream, true); setupLocalVAD(state.localStream); setupLocalPitch(state.localStream); } else { console.log('No audio/video access available, joining with text chat only'); showAlert('No audio/video access available. You can still participate in text chat. Click <b>Enable Mic</b> later if you want to join voice chat.'); } } connect(room, name); };
+  el('enableMicBtn').onclick = async () => { try { state.localStream = await getMediaWithFallback(); if (state.localStream) { addPeerTile('local', state.name || 'Me', state.localStream, true); setupLocalVAD(state.localStream); setupLocalPitch(state.localStream); replaceOrAddTrackOnPeers(); send({ type: 'media-state', hasAudio: hasAudioTrack(state.localStream), hasVideo: hasVideoTrack(state.localStream) }); el('enableMicBtn').disabled = true; hideAlert(); } else { showAlert('Still no access to mic/camera. Check Windows privacy settings and browser site permissions.'); } } catch (e) { showAlert('Still no access to mic/camera. Check Windows privacy settings and browser site permissions.'); } };
   const sendCurrentMessage = () => { const val = el('msgInput').value.trim(); if (!val) return; send({ type: 'chat', message: val }); el('msgInput').value = ''; };
   el('sendBtn').onclick = () => { sendCurrentMessage(); };
   el('msgInput').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCurrentMessage(); } });
-  el('muteBtn').onclick = () => { state.muted = !state.muted; if (state.localStream) state.localStream.getAudioTracks().forEach(t => t.enabled = !state.muted); el('muteBtn').textContent = state.muted ? 'Unmute' : 'Mute'; send({ type: 'mute', muted: state.muted }); };
-  el('leaveBtn').onclick = () => { send({ type: 'leave' }); try { state.ws && state.ws.close(); } catch {} state.peers.forEach((p, id) => { try { p.pc && p.pc.close(); } catch {} removePeerTile(id); }); state.peers.clear(); hideAlert(); hideParticipantsSection(); if (state.pitchInterval) clearInterval(state.pitchInterval); if (state.vadInterval) clearInterval(state.vadInterval); };
+  el('muteBtn').onclick = () => { state.muted = !state.muted; if (state.localStream) state.localStream.getAudioTracks().forEach(t => t.enabled = !state.muted); el('muteBtn').textContent = state.muted ? 'Unmute' : 'Mute'; if (state.localStream) send({ type: 'mute', muted: state.muted }); };
+  el('leaveBtn').onclick = () => { send({ type: 'leave' }); try { state.ws && state.ws.close(); } catch {} state.peers.forEach((p, id) => { try { p.pc && p.pc.close(); } catch {} removePeerTile(id); }); state.peers.clear(); hideAlert(); hideParticipantsSection(); clearRoomState(); // Clear saved state when leaving if (state.pitchInterval) clearInterval(state.pitchInterval); if (state.vadInterval) clearInterval(state.vadInterval); };
 }
 
 window.addEventListener('load', setupUI);
